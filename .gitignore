@@ -1,0 +1,6 @@
+# Ignore macOS system files
+.DS_Store
+
+# Ignore a specific folder (replace 'folder_name' with your folder)
+data/*
+imp_data/*

@@ -163,7 +163,31 @@ gan_data_mnar = gain_impute(data_mnar)
 # print(f"Bottleneck distance (GAIN Imputation): {bottleneck_gain:.4f}")
 end_time_gan = time.time()
 # %%
+print(gan_data_mcar[:10])
+# %%
 print(f"KNN Imputation Time: {end_time_knn - start_time_knn:.2f} seconds")
 print(f"Interpolation Imputation Time: {end_time_interpolate - start_time_interpolate:.2f} seconds")
 print(f"LOCF Imputation Time: {end_time_locf - start_time_locf:.2f} seconds")
 print(f"GAIN Imputation Time: {end_time_gan - start_time_gan:.2f} seconds")
+# %%
+root_dir = 'imp_data'
+
+# Define a mapping of data and filenames
+datasets = {
+    "knn_data_mcar": (knn_data_mcar, data_mcar.columns),
+    "knn_data_mar": (knn_data_mar, data_mar.columns),
+    "knn_data_mnar": (knn_data_mnar, data_mnar.columns),
+    "interpolated_data_mcar": (interpolated_data_mcar, data_mcar.columns),
+    "interpolated_data_mar": (interpolated_data_mar, data_mar.columns),
+    "interpolated_data_mnar": (interpolated_data_mnar, data_mnar.columns),
+    "locf_data_mcar": (locf_data_mcar, data_mcar.columns),
+    "locf_data_mar": (locf_data_mar, data_mar.columns),
+    "locf_data_mnar": (locf_data_mnar, data_mnar.columns),
+    "gan_data_mcar": (gan_data_mcar, data_mcar.columns),
+    "gan_data_mar": (gan_data_mar, data_mar.columns),
+    "gan_data_mnar": (gan_data_mnar, data_mnar.columns),
+}
+
+# Loop through the datasets and save them to CSV
+for filename, (data, columns) in datasets.items():
+    pd.DataFrame(data, columns=columns).to_csv(f"{root_dir}/{filename}.csv", index=False)
