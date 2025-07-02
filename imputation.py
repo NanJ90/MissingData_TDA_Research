@@ -16,50 +16,72 @@ if not os.path.exists(data_root):
 
 data_mcar, data_mar, data_mnar, mcar_mask, mar_mask, mnar_mask = generate_missing_data(f'{data_root}/eeg_eye_state_full.csv')
 print(data_mcar.head())
-
+random_state = 42
+np.random.seed(random_state)
 # %%
 start_time_knn = time.time()
 from sklearn.impute import KNNImputer
 def knn_imputer(data, mask, k=3):
-    #convert mask to nan for KNNimputer to recognize
-
-    # dd= data.copy()
-    # print(dd[:10])
-    data_with_nan = np.where(mask, np.nan, data)
+    """Apply KNN imputation to features only, preserving target column."""
+    # Separate features and target
+    if 'target' in data.columns:
+        target_col = data['target'].copy()
+        features_data = data.drop(columns=['target']).to_numpy()
+    else:
+        target_col = None
+        features_data = data.to_numpy()
+    
+    # Apply mask and imputation to features only
+    data_with_nan = np.where(mask, np.nan, features_data)
     knn_imputer = KNNImputer(n_neighbors=k)
     knn_data = knn_imputer.fit_transform(data_with_nan)
-    return knn_data
+    
+    # Convert back to DataFrame and add target column
+    if 'target' in data.columns:
+        result_df = pd.DataFrame(knn_data, columns=data.drop(columns=['target']).columns)
+        result_df['target'] = target_col
+        return result_df
+    else:
+        return pd.DataFrame(knn_data, columns=data.columns)
 
 knn_data_mcar = knn_imputer(data_mcar, mcar_mask)
 knn_data_mar = knn_imputer(data_mar, mar_mask)
-knn_data_mnar = knn_imputer(data_mnar, mcar_mask)
+knn_data_mnar = knn_imputer(data_mnar, mnar_mask)
 end_time_knn = time.time()
 # %%
 import copy
 start_time_interpolate = time.time()
 def interpolate_imputer(data, method='linear'):
     """
-    Fills missing values in a NumPy array using pandas interpolate.
+    Fills missing values in features using pandas interpolate, preserving target column.
 
     Args:
-        data: The NumPy array with missing values (represented as np.nan).
+        data: The DataFrame with missing values.
         method: The interpolation method ('linear', 'nearest', 'cubic', etc.).
-                See pandas.DataFrame.interpolate for options.
 
     Returns:
-        The imputed array with missing values filled.
+        The imputed DataFrame with missing values filled in features only.
     """
-    # Create a pandas DataFrame
-    if not isinstance(data, pd.DataFrame):
-        data = pd.DataFrame(data)
-    # print(df)
-    df = copy.deepcopy(data)  # Ensure we don't modify the original data
-    # Impute missing values using pandas interpolate
-    print(f'Before imp data has missign value of {df.isnull().sum()}')
-    df_interpolated = df.interpolate(method=method, axis=0, limit_direction='both') #axis=0 to impute column-wise
+    df = copy.deepcopy(data)
     
-    # Return the imputed data as a NumPy array
-    return df_interpolated.to_numpy()
+    # Separate features and target
+    if 'target' in df.columns:
+        target_col = df['target'].copy()
+        features_df = df.drop(columns=['target'])
+    else:
+        target_col = None
+        features_df = df
+    
+    print(f'Before imp data has missing value of {features_df.isnull().sum().sum()}')
+    
+    # Apply interpolation to features only
+    features_interpolated = features_df.interpolate(method=method, axis=0, limit_direction='both')
+    
+    # Add target column back
+    if target_col is not None:
+        features_interpolated['target'] = target_col
+    
+    return features_interpolated
 
 interpolated_data_mcar = interpolate_imputer(data_mcar)
 interpolated_data_mar = interpolate_imputer(data_mar)
@@ -67,27 +89,39 @@ interpolated_data_mnar = interpolate_imputer(data_mnar)
 end_time_interpolate = time.time()
 # %%
 start_time_locf = time.time()
-def locf_imputer(data,mask):
+def locf_imputer(data, mask):
     """
-    Fills missing values in a masked NumPy array using Last Observation Carried Forward (LOCF).
+    Fills missing values in features using Last Observation Carried Forward (LOCF), preserving target column.
 
     Args:
-        data: The masked NumPy array with missing values (represented by the mask).
+        data: The DataFrame with missing values.
+        mask: The mask indicating missing values (not used in this implementation).
 
     Returns:
-        The imputed array with missing values filled using LOCF.
+        The imputed DataFrame with missing values filled using LOCF in features only.
     """
-    dd = pd.DataFrame(data)
-    # print(dd.iloc[:10])
-    # print(f'Before imp data has missign value of {dd.isnull().sum().sum()}')
-    # Fill trailing NaNs with the last valid observation
-    df = dd.fillna(method='ffill').fillna(method='bfill')
-    # print(df.iloc[:10])
-    return df.to_numpy()
+    df = copy.deepcopy(data)
+    
+    # Separate features and target
+    if 'target' in df.columns:
+        target_col = df['target'].copy()
+        features_df = df.drop(columns=['target'])
+    else:
+        target_col = None
+        features_df = df
+    
+    # Apply LOCF to features only
+    features_filled = features_df.fillna(method='ffill').fillna(method='bfill')
+    
+    # Add target column back
+    if target_col is not None:
+        features_filled['target'] = target_col
+    
+    return features_filled
 
-locf_data_mcar = locf_imputer(data_mcar,mcar_mask)
+locf_data_mcar = locf_imputer(data_mcar, mcar_mask)
 locf_data_mar = locf_imputer(data_mar, mar_mask)
-locf_data_mnar = locf_imputer(data_mnar,mnar_mask)
+locf_data_mnar = locf_imputer(data_mnar, mnar_mask)
 end_time_locf = time.time()
 #%%
 import torch, torch.nn as nn
@@ -140,26 +174,36 @@ class GAIN(nn.Module):
         return x_hat, d_prob, g_sample
 
 def gain_impute(data_missing, epochs=1000, lr=0.001):
-    if isinstance(data_missing, pd.DataFrame):
-        print(f'Initial NaN count: {data_missing.isnull().sum().sum()}')
-        data_missing = data_missing.to_numpy()
+    """Apply GAIN imputation to features only, preserving target column."""
+    original_data = data_missing.copy()
     
-    mask = ~np.isnan(data_missing)
+    # Separate features and target
+    if 'target' in data_missing.columns:
+        target_col = data_missing['target'].copy()
+        features_data = data_missing.drop(columns=['target'])
+        print(f'Initial NaN count in features: {features_data.isnull().sum().sum()}')
+        features_numpy = features_data.to_numpy()
+    else:
+        target_col = None
+        features_numpy = data_missing.to_numpy()
+        print(f'Initial NaN count: {data_missing.isnull().sum().sum()}')
+    
+    mask = ~np.isnan(features_numpy)
 
     #Normalized data to [0, 1] range and fill NaNs with 0
-    data_normalized = np.copy(data_missing)
-    for col in range(data_missing.shape[1]):
-        column_data = data_missing[:, col]
+    data_normalized = np.copy(features_numpy)
+    for col in range(features_numpy.shape[1]):
+        column_data = features_numpy[:, col]
         valid_data = column_data[~np.isnan(column_data)]
-    if len(valid_data) > 0:
-        min_val, max_val = np.min(valid_data), np.max(valid_data)
-        data_normalized[:, col] = (column_data - min_val) / (max_val - min_val + 1e-6)
-    else:
-        # If column entirely NaN, fill with random numbers or zeros
-        data_normalized[:, col] = np.random.uniform(0, 1, size=data_missing.shape[0])
+        if len(valid_data) > 0:
+            min_val, max_val = np.min(valid_data), np.max(valid_data)
+            data_normalized[:, col] = (column_data - min_val) / (max_val - min_val + 1e-6)
+        else:
+            # If column entirely NaN, fill with random numbers or zeros
+            data_normalized[:, col] = np.random.uniform(0, 1, size=features_numpy.shape[0])
 
     
-    random_data = np.random.uniform(0,1,size=data_missing.shape)
+    random_data = np.random.uniform(0,1,size=features_numpy.shape)
     data_normalized[np.isnan(data_normalized)] = random_data[np.isnan(data_normalized)]
     assert not np.isnan(data_normalized).any(), "NaNs still exist after random filling!"
 
@@ -187,12 +231,19 @@ def gain_impute(data_missing, epochs=1000, lr=0.001):
     imputed_data = x_hat.detach().numpy()
 
     for col in range(imputed_data.shape[1]):
-        column_data = data_missing[:, col]
+        column_data = features_numpy[:, col]
         valid_data = column_data[~np.isnan(column_data)]
         if len(valid_data) > 0:
             min_val, max_val = np.min(valid_data), np.max(valid_data)
             imputed_data[:, col] = imputed_data[:, col] * (max_val - min_val) + min_val
-    return imputed_data
+    
+    # Convert back to DataFrame and add target column
+    if target_col is not None:
+        result_df = pd.DataFrame(imputed_data, columns=features_data.columns)
+        result_df['target'] = target_col
+        return result_df
+    else:
+        return pd.DataFrame(imputed_data, columns=data_missing.columns)
 
 def gain_impute_old(data_missing, epochs=1000, lr=0.001):
     # Convert DataFrame to NumPy array if necessary
@@ -243,48 +294,48 @@ print(f"GAIN Imputation Time: {end_time_gan - start_time_gan:.2f} seconds")
 #verifying there is no masked data in each imputation method
 # knn
 print(f' KNN imputation check')
-# print(f'Original data NaNs: {np.isnan(feature1.to_numpy()).sum()}')
-print(f'MCAR: {np.isnan(knn_data_mcar).sum()}')
-print(f'MAR: {np.isnan(knn_data_mar).sum()}')
-print(f'MNAR: {np.isnan(knn_data_mnar).sum()}')
+print(f'MCAR: {knn_data_mcar.isnull().sum().sum()}')
+print(f'MAR: {knn_data_mar.isnull().sum().sum()}')
+print(f'MNAR: {knn_data_mnar.isnull().sum().sum()}')
 #interpolation
 print(f'\n Interpolation imputation check')
-print(f'MCAR: {np.isnan(interpolated_data_mcar).sum()}')
-print(f'MAR: {np.isnan(interpolated_data_mar).sum()}')
-print(f'MNAR: {np.isnan(interpolated_data_mnar).sum()}')
+print(f'MCAR: {interpolated_data_mcar.isnull().sum().sum()}')
+print(f'MAR: {interpolated_data_mar.isnull().sum().sum()}')
+print(f'MNAR: {interpolated_data_mnar.isnull().sum().sum()}')
 # #last observation forward carry
 print(f'\n LOCF imputation check')
-print(f'MCAR: {np.isnan(locf_data_mcar).sum()}')
-print(f'MAR: {np.isnan(locf_data_mar).sum()}')
-print(f'MNAR: {np.isnan(locf_data_mnar).sum()}')
+print(f'MCAR: {locf_data_mcar.isnull().sum().sum()}')
+print(f'MAR: {locf_data_mar.isnull().sum().sum()}')
+print(f'MNAR: {locf_data_mnar.isnull().sum().sum()}')
 # #GAN
 print(f'\n GAN imputation check')
-print(f'MCAR: {np.isnan(gan_data_mcar).sum()}')
-print(f'MAR: {np.isnan(gan_data_mar).sum()}')
-print(f'MNAR: {np.isnan(gan_data_mnar).sum()}')
+print(f'MCAR: {gan_data_mcar.isnull().sum().sum()}')
+print(f'MAR: {gan_data_mar.isnull().sum().sum()}')
+print(f'MNAR: {gan_data_mnar.isnull().sum().sum()}')
 # %%
 root_dir = 'imp_data'
 if not os.path.exists(root_dir):
     os.makedirs(root_dir, exist_ok=True)
-# Define a mapping of data and filenames
+
+# Define a mapping of data and filenames - now all are DataFrames
 datasets = {
-    "knn_data_mcar": (knn_data_mcar, data_mcar.columns),
-    "knn_data_mar": (knn_data_mar, data_mar.columns),
-    "knn_data_mnar": (knn_data_mnar, data_mnar.columns),
-    "interpolated_data_mcar": (interpolated_data_mcar, data_mcar.columns),
-    "interpolated_data_mar": (interpolated_data_mar, data_mar.columns),
-    "interpolated_data_mnar": (interpolated_data_mnar, data_mnar.columns),
-    "locf_data_mcar": (locf_data_mcar, data_mcar.columns),
-    "locf_data_mar": (locf_data_mar, data_mar.columns),
-    "locf_data_mnar": (locf_data_mnar, data_mnar.columns),
-    "gan_data_mcar": (gan_data_mcar, data_mcar.columns),
-    "gan_data_mar": (gan_data_mar, data_mar.columns),
-    "gan_data_mnar": (gan_data_mnar, data_mnar.columns),
+    "knn_data_mcar": knn_data_mcar,
+    "knn_data_mar": knn_data_mar,
+    "knn_data_mnar": knn_data_mnar,
+    "interpolated_data_mcar": interpolated_data_mcar,
+    "interpolated_data_mar": interpolated_data_mar,
+    "interpolated_data_mnar": interpolated_data_mnar,
+    "locf_data_mcar": locf_data_mcar,
+    "locf_data_mar": locf_data_mar,
+    "locf_data_mnar": locf_data_mnar,
+    "gan_data_mcar": gan_data_mcar,
+    "gan_data_mar": gan_data_mar,
+    "gan_data_mnar": gan_data_mnar,
 }
 
 # Loop through the datasets and save them to CSV
-for filename, (data, columns) in datasets.items():
-    pd.DataFrame(data, columns=columns).to_csv(f"{root_dir}/{filename}.csv", index=False)
+for filename, data in datasets.items():
+    data.to_csv(f"{root_dir}/{filename}.csv", index=False)
 
 if __name__ == "__main__":
     print(f"Imputed data saved to {root_dir} directory.")

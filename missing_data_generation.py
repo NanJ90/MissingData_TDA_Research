@@ -116,7 +116,14 @@ def generate_missing_data(file_path, missing_rate=0.3, dependent_feature_index=2
         tuple: Datasets with MCAR, MAR, and MNAR missing values as pandas DataFrames.
     """
     X = pd.read_csv(file_path)
-    features_v1 = copy.deepcopy(X)
+    
+    # Separate features and target - do not add missing values to target column
+    if 'target' in X.columns:
+        target_col = X['target'].copy()
+        features_v1 = copy.deepcopy(X.drop(columns=['target']))
+    else:
+        target_col = None
+        features_v1 = copy.deepcopy(X)
 
     mcar_mask = generate_mcar_mask(features_v1, missing_rate)
     mar_mask = generate_mar_mask(features_v1.to_numpy(), missing_rate, dependent_feature_index)
@@ -126,10 +133,21 @@ def generate_missing_data(file_path, missing_rate=0.3, dependent_feature_index=2
     data_mar = np.ma.masked_array(features_v1.to_numpy(), mask=mar_mask).filled(np.nan)
     data_mnar = np.ma.masked_array(features_v1.to_numpy(), mask=mnar_mask).filled(np.nan)
 
+    # Convert back to DataFrames with correct feature columns
+    data_mcar_df = pd.DataFrame(data_mcar, columns=features_v1.columns)
+    data_mar_df = pd.DataFrame(data_mar, columns=features_v1.columns)
+    data_mnar_df = pd.DataFrame(data_mnar, columns=features_v1.columns)
+    
+    # Add target column back (without missing values)
+    if target_col is not None:
+        data_mcar_df['target'] = target_col
+        data_mar_df['target'] = target_col
+        data_mnar_df['target'] = target_col
+
     return ( 
-        pd.DataFrame(data_mcar, columns=X.columns), 
-        pd.DataFrame(data_mar, columns=X.columns), 
-        pd.DataFrame(data_mnar, columns=X.columns), 
+        data_mcar_df, 
+        data_mar_df, 
+        data_mnar_df, 
         mcar_mask,
         mar_mask, 
         mnar_mask

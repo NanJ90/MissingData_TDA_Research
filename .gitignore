@@ -4,3 +4,63 @@
 # Ignore a specific folder (replace 'folder_name' with your folder)
 data/*
 imp_data/*
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyCharm cache
+.idea/
+
+# VS Code cache
+.vscode/
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Weights & Biases
+wandb/
+
+# Machine learning model files
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+
+# Results and output directories
+classification_results*/
+results*/
+outputs*/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
