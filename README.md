@@ -20,7 +20,7 @@ Linux:
 wget https://s3.amazonaws.com/keras-datasets/jena_climate_2009_2016.csv.zip
 unzip jena_climate_2009_2016.csv.zip
 ```
-
+Data files are large and are not uploaded to GitHub; you can download them using the steps above or contact me (njia@gradcenter.cuny.edu) for the dataset list.
 ## Pipeline Process
 ### Stage 1: Data preparation
 1. Generate missing data:
