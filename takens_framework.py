@@ -4,7 +4,6 @@ Takens' Embedding Framework for Time Series Point Cloud Analysis
 A reusable framework for applying Takens' embedding to time series datasets,
 including support for imputed datasets and multiple imputation methods.
 
-Author: Data Scientist
 Date: 2025
 """
 
