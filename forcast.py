@@ -88,7 +88,6 @@ class TrafficLSTM(nn.Module):
         
         return out
 
-# Alternative: Simplified version closer to your original but with Kaggle sizing
 class TrafficLSTMSimple(nn.Module):
     def __init__(self, input_size, hidden_size=256, num_layers=2, output_size=1, dropout=0.2):
         super(TrafficLSTMSimple, self).__init__()

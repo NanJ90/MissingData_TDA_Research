@@ -7,7 +7,6 @@ This script demonstrates how to:
 3. Visualize the point cloud representations
 4. Analyze the topological structure
 
-Author: Data Scientist
 Date: 2025
 """
 
