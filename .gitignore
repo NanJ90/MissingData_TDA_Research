@@ -4,3 +4,4 @@
 # Ignore a specific folder (replace 'folder_name' with your folder)
 data/*
 imp_data/*
+incomplete_data/*

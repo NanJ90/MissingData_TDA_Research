@@ -35,9 +35,7 @@ unzip jena_climate_2009_2016.csv.zip
    `analysis/TDA_TSA.ipynb`
 
 ## Directory Layout
-- `data/`: raw datasets (CSV)
-- `incomplete_data/`: datasets with missingness (pickle)
-- `imp_data/`: imputed datasets (CSV or pickle)
+
 - `regression_results/`: per-method RMSE/MSE outputs (CSV)
 - `classification_results/`: per-method classification metrics (TXT/CSV)
 - `analysis/`: notebooks for exploratory and forecasting analysis
