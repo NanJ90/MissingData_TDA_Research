@@ -1,0 +1,2 @@
+Imputation Method,Missing Mechanism,RMSE,MSE
+knn,mnar,903.4107548629954,816150.9920021271

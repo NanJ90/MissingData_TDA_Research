@@ -1,0 +1,2 @@
+Imputation Method,Missing Mechanism,RMSE,MSE
+interpolated,mnar,903.2739311123102,815903.7946270864

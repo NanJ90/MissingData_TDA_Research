@@ -1,0 +1,2 @@
+Imputation Method,Missing Mechanism,RMSE,MSE
+locf,mcar,1955.2744910952301,3823098.335527711

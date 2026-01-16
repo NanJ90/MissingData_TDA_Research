@@ -4,25 +4,150 @@ import pandas as pd
 import time 
 import os 
 import sys
+import pickle
 import importlib
+import copy
 import missing_data_generation
 importlib.reload(missing_data_generation)
 
+# Configuration section - easily modifiable parameters
+CONFIG = {
+    'default_data_path': 'data/eeg_eye_state_full.csv',
+    'missing_rate': 0.3,
+    'mar_dependent_feature_idx': 2,
+    'mnar_feature_idx': 2,
+    'random_state': 42,
+    'knn_neighbors': 3,
+    'interpolation_method': 'linear',
+    'gan_epochs': 1000,
+    'gan_learning_rate': 0.001,
+    'output_dir': 'imp_data'
+}
+
 from missing_data_generation import generate_missing_data
 
-data_root = 'data'
-if not os.path.exists(data_root):
-    os.makedirs(data_root, exist_ok=True)
-
-data_mcar, data_mar, data_mnar, mcar_mask, mar_mask, mnar_mask = generate_missing_data(f'{data_root}/eeg_eye_state_full.csv')
-print(data_mcar.head())
-random_state = 42
-np.random.seed(random_state)
 # %%
-start_time_knn = time.time()
+if __name__ == "__main__":
+    import os 
+    import glob
+    root_dir = 'incomplete_data'
+    print("Available missing datasets are:")
+    # List all CSV files in the data directory
+    data_files = glob.glob('data/*.csv')
+    
+    if not data_files:
+        print("No data files found in 'data/' directory.")
+        sys.exit(1)
+    for i, file in enumerate(data_files):
+        print(f"{i+1}. {os.path.basename(file)}")
+        #using number to select the file and locate the incomplete data path = imcomplete_data/{dataset_name}/{dataset_name}.pkl
+    choice = input(f"Select a dataset by number (1-{len(data_files)}): ").strip()
+    try:
+        choice_num = int(choice) if choice else len(data_files) + 2
+        if 1 <= choice_num <= len(data_files):
+            dataset_name = os.path.basename(data_files[choice_num - 1]).replace('.csv', '')
+
+            print(f"Selected dataset: {dataset_name}")
+            data_path = f"{root_dir}/{dataset_name}/{dataset_name}.pkl"
+            if os.path.exists(data_path):
+                print(f"Loading data from: {data_path}")
+                print("📦 Loading data...")
+                with open(data_path, 'rb') as f:
+                    datasets = pickle.load(f)
+                    data_mcar = datasets['mcar']
+                    data_mar = datasets['mar']
+                    data_mnar = datasets['mnar']
+                    mcar_mask = datasets['mcar_mask']
+                    mar_mask = datasets['mar_mask']
+                    mnar_mask = datasets['mnar_mask']
+                    print(data_mcar.head())
+    except ValueError:
+        print("Invalid input. Using default dataset.")
+        
+
+    # # Option 1: Use command line arguments
+    # if len(sys.argv) > 1:
+    #     data_path = sys.argv[1]
+    #     print(f"Using data path from command line: {data_path}")
+    # # Option 2: Use environment variable
+    # elif 'DATA_PATH' in os.environ:
+    #     data_path = os.environ['DATA_PATH']
+    #     print(f"Using data path from environment variable: {data_path}")
+    # # Option 3: Interactive input (default)
+    # else:
+    #     data_path = None
+    #     print("No data path specified. Will prompt for input.")
+    #incomplete data path = imcomplete_data/{dataset_name}/{dataset_name}.pkl
+
+    # Generate missing data
+#     data_mcar, data_mar, data_mnar, mcar_mask, mar_mask, mnar_mask = load_and_generate_missing_data(data_path)
+
+#     # Set random state for reproducibility
+#     random_state = CONFIG['random_state']
+#     np.random.seed(random_state)
+# else:
+#     # When imported as module, don't generate data automatically
+#     print("📦 Imputation module imported successfully!")
+#     print("💡 Use load_and_generate_missing_data() function to load your data")
+#     data_mcar = data_mar = data_mnar = None
+#     mcar_mask = mar_mask = mnar_mask = None
+def load_and_generate_missing_data(data_path=None, missing_rate=None, dep_feature_idx=None, feature_idx=None):
+    """
+    Load data and generate missing data patterns.
+    
+    Args:
+        data_path (str): Path to the CSV file. If None, will use CONFIG or prompt user.
+        missing_rate (float): Percentage of missing data. If None, uses CONFIG.
+        dep_feature_idx (int): Feature index for MAR dependency. If None, uses CONFIG.
+        feature_idx (int): Feature index for MNAR. If None, uses CONFIG.
+    
+    Returns:
+        tuple: Generated missing data (mcar, mar, mnar) and masks.
+    """
+    # Use CONFIG defaults if not provided
+    missing_rate = missing_rate or CONFIG['missing_rate']
+    dep_feature_idx = dep_feature_idx or CONFIG['mar_dependent_feature_idx']
+    feature_idx = feature_idx or CONFIG['mnar_feature_idx']
+    
+    if data_path is None:
+        # Get user input for data path
+        default_path = CONFIG['default_data_path']
+        data_path = input(f"Enter the path to your CSV file (default: '{default_path}'): ").strip()
+        if not data_path:
+            data_path = default_path
+    
+    # Check if file exists
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"File not found: {data_path}")
+    
+    print(f"Loading data from: {data_path}")
+    print(f"Missing rate: {missing_rate}")
+    print(f"MAR dependent feature index: {dep_feature_idx}")
+    print(f"MNAR feature index: {feature_idx}")
+    
+    return generate_missing_data(data_path, missing_rate, dep_feature_idx, feature_idx)
+
+# Only run data loading when script is executed directly, not when imported
+
+# %%
+# Import required libraries for imputation methods
 from sklearn.impute import KNNImputer
-def knn_imputer(data, mask, k=3):
+import torch, torch.nn as nn
+import torch.optim as optim
+from tqdm import tqdm
+from torch.optim import Adam
+
+# Set PyTorch random seed
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(42)
+
+# cuda = True if torch.cuda.is_available() else False
+
+def knn_imputer(data, mask, k=None):
     """Apply KNN imputation to features only, preserving target column."""
+    k = k or CONFIG['knn_neighbors']
+    
     # Separate features and target
     if 'target' in data.columns:
         target_col = data['target'].copy()
@@ -33,24 +158,26 @@ def knn_imputer(data, mask, k=3):
     
     # Apply mask and imputation to features only
     data_with_nan = np.where(mask, np.nan, features_data)
-    knn_imputer = KNNImputer(n_neighbors=k)
-    knn_data = knn_imputer.fit_transform(data_with_nan)
+    knn_imputer_model = KNNImputer(n_neighbors=k)
+    knn_data = knn_imputer_model.fit_transform(data_with_nan)
     
     # Convert back to DataFrame and add target column
     if 'target' in data.columns:
-        result_df = pd.DataFrame(knn_data, columns=data.drop(columns=['target']).columns)
+        result_df = pd.DataFrame(knn_data, columns=data.drop(columns=['target']).columns, index=data.index)
         result_df['target'] = target_col
         return result_df
     else:
-        return pd.DataFrame(knn_data, columns=data.columns)
+        return pd.DataFrame(knn_data, columns=data.columns, index=data.index)
 
+# Note: The following execution code is commented out to allow module import
+# Uncomment and run these sections when using the script directly
+start_time_knn = time.time()
 knn_data_mcar = knn_imputer(data_mcar, mcar_mask)
 knn_data_mar = knn_imputer(data_mar, mar_mask)
 knn_data_mnar = knn_imputer(data_mnar, mnar_mask)
 end_time_knn = time.time()
 # %%
-import copy
-start_time_interpolate = time.time()
+
 def interpolate_imputer(data, method='linear'):
     """
     Fills missing values in features using pandas interpolate, preserving target column.
@@ -123,22 +250,7 @@ locf_data_mcar = locf_imputer(data_mcar, mcar_mask)
 locf_data_mar = locf_imputer(data_mar, mar_mask)
 locf_data_mnar = locf_imputer(data_mnar, mnar_mask)
 end_time_locf = time.time()
-#%%
-import torch, torch.nn as nn
-import torch.optim as optim
-torch.manual_seed(42)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(42)
 
-import torch
-import torch.nn as nn
-# from gain import GAIN
-# import torch
-# from torch.optim import Adam
-from tqdm import tqdm
-from torch.optim import Adam
-cuda = True if torch.cuda.is_available() else False
-print(f"Using CUDA: {cuda}")
 # %%
 
 start_time_gan = time.time()
@@ -286,7 +398,7 @@ end_time_gan = time.time()
 # print(gan_data_mcar[:10])
 # %%
 print(f"KNN Imputation Time: {end_time_knn - start_time_knn:.2f} seconds")
-print(f"Interpolation Imputation Time: {end_time_interpolate - start_time_interpolate:.2f} seconds")
+# print(f"Interpolation Imputation Time: {end_time_interpolate - start:.2f} seconds")x
 print(f"LOCF Imputation Time: {end_time_locf - start_time_locf:.2f} seconds")
 print(f"GAIN Imputation Time: {end_time_gan - start_time_gan:.2f} seconds")
 
@@ -313,9 +425,9 @@ print(f'MCAR: {gan_data_mcar.isnull().sum().sum()}')
 print(f'MAR: {gan_data_mar.isnull().sum().sum()}')
 print(f'MNAR: {gan_data_mnar.isnull().sum().sum()}')
 # %%
-root_dir = 'imp_data'
-if not os.path.exists(root_dir):
-    os.makedirs(root_dir, exist_ok=True)
+imp_data_dir = 'imp_data'
+if not os.path.exists(imp_data_dir):
+    os.makedirs(imp_data_dir, exist_ok=True)
 
 # Define a mapping of data and filenames - now all are DataFrames
 datasets = {
@@ -334,15 +446,25 @@ datasets = {
 }
 
 # Loop through the datasets and save them to CSV
-for filename, data in datasets.items():
-    data.to_csv(f"{root_dir}/{filename}.csv", index=False)
+# for filename, data in datasets.items():
+    # data.to_csv(f"{root_dir}/{filename}.csv", index=False)
+# saving datasets to a pickle file
+time_stamp = time.strftime("%Y%m%d_%H%M%S")
+with open(f"{imp_data_dir}/imputed_datasets_{time_stamp}.pkl", 'wb') as f:
+    pickle.dump(datasets, f)
 
-if __name__ == "__main__":
-    print(f"Imputed data saved to {root_dir} directory.")
-    print(f"Total time taken for all imputations: {end_time_gan - start_time_knn:.2f} seconds")
-    print("All imputations completed successfully!")
+# if __name__ == "__main__":
+#     print(f"Imputed data saved to {root_dir} directory.")
+#     print(f"Total time taken for all imputations: {end_time_gan - start_time_knn:.2f} seconds")
+#     print("All imputations completed successfully!")
 # %%
 #saving gan imputed data
 # pd.DataFrame(gan_data_mcar, columns=data_mcar.columns).to_csv(f"imp_data/gan_data_mcar.csv", index=False)
 # pd.DataFrame(gan_data_mar, columns=data_mar.columns).to_csv(f"imp_data/gan_data_mar.csv", index=False)
 # pd.DataFrame(gan_data_mnar, columns=data_mnar.columns).to_csv(f"imp_data/gan_data_mnar.csv", index=False)
+#%%
+# with open(f"imp_data/imputed_datasets_20250724_002055.pkl", 'rb') as f:
+#     datasets = pickle.load(f)
+#     for key, df in datasets.items():
+#         print(key)
+#         print(df.head())  # Print first 5 rows for verification
